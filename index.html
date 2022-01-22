@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+    <meta charset="UTF-8">
+    <title>Werdle</title>
+    <head>
+        <style>
+            .main {
+                width: 100%;
+                height: 100%;
+                margin-top: 5%;
+            }
+            
+            .game-table {
+                margin-right: auto;
+                margin-left: auto;
+            }
+            
+            .game-table td {
+                padding: 15px;
+                width: 17px;
+            }
+            
+            .game-table span {
+                font-size: 24px;
+            }
+            
+            .exact-match {
+                background-color: ForestGreen;
+                color: white;
+            }
+                
+            .partial-match {
+                background-color: Tan;
+                color: white;
+            }
+            
+            .no-match {
+                background-color: LightGray;
+                color: gray;
+            }
+            
+            .entry-locked {
+                pointer-events: none;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="main" class="main"></div>
+    </body>
+</html>
+
+<script>
+    var lastSpanSeen;
+    
+    document.addEventListener("keydown", function(event) {
+        if (event.keyCode == 8 && event.target.className !== "letter") {
+            // delete key
+            lastSpanSeen.innerText = "_";
+            lastSpanSeen.focus();
+        }
+    });
+    
+    class WordList {
+        static generate() {
+            return fetch("https://random-word-api.herokuapp.com/all").then(
+                response => response.json()
+            ).then(
+                json => json
+            )
+        }
+        
+        static randomWord(length) {
+            return WordList.generate().then(
+                list => list[Math.floor(Math.random() * list.length)]
+            )
+        }
+    }
+    
+    class GameTable {
+        constructor(seed) {
+            this.seed = seed = seed.toUpperCase();
+            
+            let table = this.table = document.createElement("table");
+            table.className = "game-table";
+            table.border = "1px black";
+            let th = table.createTHead();
+            let headRow = th.insertRow();
+            
+            for (let char of seed) {
+                let cell = headRow.insertCell();
+                cell.innerText = "?";
+            }
+            
+            let tbody = table.createTBody();
+            let row = this.buildRow(seed);
+        }
+        
+        buildRow(seed) {
+            let self = this;
+            //let table = this.table;
+            let row = this.table.insertRow();
+            
+            for (let [c, char] of Object.entries(seed)) {
+                let cell = row.insertCell();
+                let span = document.createElement("span");
+                cell.appendChild(span);
+                span.id = `${row.rowIndex}x${c}`;
+                span.className = "letter";
+                span.contentEditable = true;
+                span.innerText = "_";
+                
+                function lastSpan() {
+                    let lastId = `${row.rowIndex}x${parseInt(c)-1}`;
+                    return document.getElementById(lastId);
+                }
+                
+                function nextSpan() {
+                    let nextId = `${row.rowIndex}x${parseInt(c)+1}`;
+                    return document.getElementById(nextId);
+                }
+                
+                span.addEventListener("input", function(event) {
+                    if (span.innerText.length > 1) {
+                        span.innerText = event.data;
+                    }
+                    
+                    span.innerText = span.innerText.toUpperCase();
+                    
+                    let ns = nextSpan(); 
+                    
+                    if (ns) {
+                        ns.focus();
+                    } 
+                    else {
+                        span.blur();
+                    }
+                });
+                
+                span.addEventListener("keydown", function (event) {
+                    if (event.keyCode === 13) {
+                        // return
+                        event.preventDefault(); // prevent newline
+                        span.blur();
+                        
+                        nextSpan() && nextSpan().focus();
+                    }
+                    
+                    if (event.keyCode == 8) {
+                        // delete
+                        let ls = lastSpan();
+                        
+                        if (ls && span.innerText === "_") {
+                            ls.innerText = "_";
+                            ls.focus();
+                        }
+                        else {
+                            span.innerText = "_"
+                        }
+                    }
+                    
+                    // left/right arrow
+                    event.keyCode == 37 && lastSpan() && lastSpan().focus();
+                    event.keyCode == 39 && nextSpan() && nextSpan().focus();
+                });
+                
+                span.addEventListener("blur", function() {
+                    while (span.innerText.length < 1) {
+                        span.innerText += '_';
+                    }
+                    
+                    lastSpanSeen = span;
+                });
+            }
+            
+            let buttonCell = row.insertCell();
+            let button = document.createElement("button");
+            buttonCell.appendChild(button);
+            button.innerText = "\u2713";
+            
+            button.addEventListener("click", function() {
+                let entry = "";
+                
+                for (let [i, cell] of Object.entries(row.cells).slice(0, -1)) {
+                    cell.className = cell.innerText === seed[i] ? "exact-match" : seed.includes(cell.innerText) ? "partial-match" : "no-match";
+                    cell.children[0].contentEditable = false;
+                    entry += cell.innerText;
+                }
+                
+                row.className = "entry-locked";
+                buttonCell.innerText = row.rowIndex;
+                
+                if (entry == seed) {
+                    console.log("ding");
+                }
+                else {
+                    self.buildRow(seed);
+                }
+            });
+            
+            let first = row.cells[0].children[0];
+            setTimeout(function() {first.focus()}, 0);
+            
+            return row
+        }
+    }
+    
+    WordList.randomWord().then(
+        word => {
+            let table = (new GameTable(word)).table;
+            table.style = "text-align: center";
+            document.getElementById("main").appendChild(table);
+        }
+    )
+</script>
