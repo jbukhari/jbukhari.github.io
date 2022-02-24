@@ -13,6 +13,7 @@
             .game-table {
                 margin-right: auto;
                 margin-left: auto;
+                text-align: center;
             }
             
             .game-table td {
@@ -24,14 +25,33 @@
                 font-size: 24px;
             }
             
+            tr.row-active td {
+                border-top: 2px solid red;
+                border-bottom: 2px solid red;
+            }
+            
+            tr.row-alert td {
+                background-color: red;
+            }
+            
             .exact-match {
                 background-color: ForestGreen;
                 color: white;
             }
+            
+            .exact-match-active {
+                background-color: ForestGreen;
+                color: black;
+            }
                 
             .partial-match {
-                background-color: Tan;
+                background-color: Gold;
                 color: white;
+            }
+            
+            .partial-match-active {
+                background-color: Gold;
+                color: black;
             }
             
             .no-match {
@@ -39,24 +59,61 @@
                 color: gray;
             }
             
+            .seen-letter {
+                background-color: DimGray;
+            }
+            
+            .invalid-entry {
+                background-color: gray;
+            }
+            
             .entry-locked {
                 pointer-events: none;
+            }
+            
+            .button-primed {
+                color: DarkGray;
+            }
+            
+            /* info div */
+            div.info-display {
+                margin-right: auto;
+                margin-left: auto;
+                text-align: center;
             }
         </style>
     </head>
     <body>
-        <div id="main" class="main"></div>
+        <div>
+            <div id="main" class="main"></div>
+            <div id="display" class="display"></div>
+        </div>
     </body>
 </html>
 
 <script>
+    var currentRow;
+    //var lastCellSeen;
     var lastSpanSeen;
     
     document.addEventListener("keydown", function(event) {
-        if (event.keyCode == 8 && event.target.className !== "letter") {
-            // delete key
-            lastSpanSeen.innerText = "_";
-            lastSpanSeen.focus();
+        if (event.keyCode === 13) {
+            // enter
+            console.log(currentRow.rowIndex)
+            
+            currentRow.buttonElement.click();
+        }
+        else if (! currentRow.classList.contains("entry-locked") && event.target.className !== "letter") {    
+            if (event.keyCode == 8) {
+                // delete key
+                //lastSpanSeen.innerText = "_";
+                lastSpanSeen.parentNode.className = null;
+                lastSpanSeen.focus();
+            }
+            else if (event.keyCode === 37) {
+                // left arrow
+                lastSpanSeen.focus();
+            }
         }
     });
     
@@ -69,36 +126,39 @@
             )
         }
         
-        static randomWord(length) {
+        randomWord(length) {
+            let self = this;
+            
             return WordList.generate().then(
-                list => list[Math.floor(Math.random() * list.length)]
+                list => {
+                    // filter 5 char words and no proper nouns
+                    self.list = list.filter(x => x.length === 5 && x.charAt(0) !== x.charAt(0).toUpperCase());
+                    
+                    return self.list[Math.floor(Math.random() * self.list.length)]
+                }
             )
         }
     }
     
     class GameTable {
-        constructor(seed) {
+        constructor(seed, validWords) {
             this.seed = seed = seed.toUpperCase();
+            this.validWords = validWords;
             
             let table = this.table = document.createElement("table");
             table.className = "game-table";
             table.border = "1px black";
-            let th = table.createTHead();
-            let headRow = th.insertRow();
-            
-            for (let char of seed) {
-                let cell = headRow.insertCell();
-                cell.innerText = "?";
-            }
-            
             let tbody = table.createTBody();
             let row = this.buildRow(seed);
+            this.seenLetters = [];
+            this.letterIndex = {};
         }
         
         buildRow(seed) {
             let self = this;
-            //let table = this.table;
             let row = this.table.insertRow();
+            row.classList.add("row-active");
+            currentRow = row;
             
             for (let [c, char] of Object.entries(seed)) {
                 let cell = row.insertCell();
@@ -121,18 +181,37 @@
                 
                 span.addEventListener("input", function(event) {
                     if (span.innerText.length > 1) {
-                        span.innerText = event.data;
+                        span.innerText = event.data.toUpperCase();
+                        
+                        if (self.seenLetters.includes(span.innerText)) {
+                            cell.className = "seen-letter";
+                        }
+                        else {
+                            cell.className = null;
+                        }
+                        
+                        // check previous rows for matched letters
+                        for (let [x, checkRow] of Object.entries(self.table.rows)) {
+                            let checkCell = checkRow.cells[c];
+                            
+                            if (cell.innerText === checkCell.innerText) {
+                                if (checkCell.classList.contains("exact-match")) {
+                                    cell.className = "exact-match-active";
+                                }
+                                else if (checkCell.classList.contains("partial-match")) {
+                                    cell.className = "partial-match-active";
+                                }
+                            }
+                        }
                     }
                     
-                    span.innerText = span.innerText.toUpperCase();
-                    
-                    let ns = nextSpan(); 
+                    let ns = nextSpan();
                     
                     if (ns) {
                         ns.focus();
                     } 
                     else {
-                        span.blur();
+                        //span.blur();
                     }
                 });
                 
@@ -140,21 +219,32 @@
                     if (event.keyCode === 13) {
                         // return
                         event.preventDefault(); // prevent newline
-                        span.blur();
-                        
-                        nextSpan() && nextSpan().focus();
                     }
                     
                     if (event.keyCode == 8) {
                         // delete
                         let ls = lastSpan();
+                        let ns = nextSpan();
                         
-                        if (ls && span.innerText === "_") {
-                            ls.innerText = "_";
-                            ls.focus();
+                        if (! ns) {
+                            // last cell
+                            if (span.innerText === "_") {
+                                // delete prev cell
+                                ls.innerText = "_";
+                                ls.focus();
+                                ls.parentNode.className = null;
+                            }
+                            else {
+                                // delete this cell
+                                span.innerText = "_";
+                                cell.className = null;
+                            }
                         }
                         else {
-                            span.innerText = "_"
+                            // delete prev cell
+                            ls.innerText = "_";
+                            ls.focus();
+                            ls.parentNode.className = null;
                         }
                     }
                     
@@ -166,33 +256,55 @@
                 span.addEventListener("blur", function() {
                     while (span.innerText.length < 1) {
                         span.innerText += '_';
+                        cell.classList.remove("seen-letter")
                     }
-                    
+
                     lastSpanSeen = span;
                 });
             }
             
             let buttonCell = row.insertCell();
             let button = document.createElement("button");
+            row.buttonElement = button;
             buttonCell.appendChild(button);
             button.innerText = "\u2713";
             
             button.addEventListener("click", function() {
-                let entry = "";
+                let entry = Array.from(row.cells).slice(0, -1).map(x => x.innerText.toLowerCase()).join("");
+                
+                console.log(entry)
+                
+                if (! self.validWords.includes(entry)) {
+                    row.classList.add('row-alert'); 
+                    setTimeout(function() {row.classList.remove('row-alert')}, 100);
+                    
+                    return
+                }
                 
                 for (let [i, cell] of Object.entries(row.cells).slice(0, -1)) {
-                    cell.className = cell.innerText === seed[i] ? "exact-match" : seed.includes(cell.innerText) ? "partial-match" : "no-match";
+                    if (cell.innerText === seed[i]) {
+                        cell.className = "exact-match";
+                    }
+                    else if (seed.includes(cell.innerText)) {
+                        cell.className = "partial-match";
+                    }
+                    else {
+                        cell.className = "no-match";
+                        self.seenLetters.push(cell.innerText);
+                    }
+                    
+                    // lock the fields
                     cell.children[0].contentEditable = false;
-                    entry += cell.innerText;
                 }
                 
                 row.className = "entry-locked";
-                buttonCell.innerText = row.rowIndex;
+                buttonCell.innerText = row.rowIndex + 1;
                 
-                if (entry == seed) {
+                if (entry.toUpperCase() === seed.toUpperCase()) {
                     console.log("ding");
                 }
                 else {
+                    row.classList.remove("active-row");
                     self.buildRow(seed);
                 }
             });
@@ -204,10 +316,41 @@
         }
     }
     
-    WordList.randomWord().then(
+    class Menu {
+        constructor(gameTable) {
+            this.el = document.createElement("div");
+            this.el.className = "menu";
+            this.el.innerText = "hey";
+        }
+    }
+    
+    class Info {
+        constructor(gameTable) {
+            this.el = document.createElement("div");
+            this.el.className = "info";
+            this.el.innerText = "hey";
+        }
+    }
+    
+    class MainTable {
+        constructor(wordList, wordLength) {
+            this.el = document.createElement("table");
+            
+            this.menu = new Menu();
+            this.info = new Info();
+            this.gameTable = new GameTable(wordList);
+            this.menu.gameTable = this.gameTable;
+            this.info.gameTable = this.gameTable;
+        }
+        
+        build() {}
+    }
+    
+    let w = new WordList;
+    
+    w.randomWord().then(
         word => {
-            let table = (new GameTable(word)).table;
-            table.style = "text-align: center";
+            let table = (new GameTable(word, w.list)).table;
             document.getElementById("main").appendChild(table);
         }
     )
